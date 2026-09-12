@@ -1036,78 +1036,57 @@ async function renderCurrentRoute() {
    grid. It is separate from the SPA route loader, so a static UI
    can still receive anime cards immediately on page load.
    ------------------------------------------------------------------ */
-async function fetchTrendingAnime() {
-  const grid = document.querySelector("#mainAnimeGrid");
-  if (!grid) return [];
-
-  const query = `
-    query TrendingAndPopular {
-      trending: Page(page: 1, perPage: 18) {
-        media(sort: TRENDING_DESC, type: ANIME, isAdult: false) {
-          id
-          idMal
-          title { romaji english native }
-          coverImage { large extraLarge }
-          bannerImage
-          averageScore
-          popularity
-          episodes
-          format
-          status
-          seasonYear
-        }
-      }
-      popular: Page(page: 1, perPage: 18) {
-        media(sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
-          id
-          idMal
-          title { romaji english native }
-          coverImage { large extraLarge }
-          bannerImage
-          averageScore
-          popularity
-          episodes
-          format
-          status
-          seasonYear
-        }
-      }
-    }
-  `;
-
-  // Show an explicit loading state before the network request.
-  grid.innerHTML = `
-    ${Array.from({ length: 12 }, () => `
-      <div class="anime-card">
-        <div class="anime-poster skeleton"></div>
-        <div class="mt-2 h-4 w-4/5 rounded skeleton"></div>
-        <div class="mt-2 h-3 w-1/2 rounded skeleton"></div>
-      </div>
-    `).join("")}
-  `;
-
-  try {
-    const response = await fetch("https://graphql.anilist.co", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-      },
-      body: JSON.stringify({ query })
+async function fetchAniList(query, variables = {}) {
+    const response = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+            query: query,
+            variables: variables
+        })
     });
 
     if (!response.ok) {
-      throw new Error(`AniList HTTP ${response.status}`);
+        throw new Error(`AniList API error: ${response.status}`);
     }
 
     const json = await response.json();
-    if (json.errors?.length) {
-      throw new Error(json.errors.map(error => error.message).join("; "));
+    return json.data;
+}
+
+// Example trending query to load your home grid safely
+async function loadTrendingAnime() {
+    const query = `
+        query {
+            Page(page: 1, perPage: 20) {
+                media(sort: TRENDING_DESC, type: ANIME) {
+                    id
+                    title {
+                        romaji
+                        english
+                    }
+                    coverImage {
+                        large
+                    }
+                    episodes
+                    averageScore
+                }
+            }
+        }
+    `;
+
+    try {
+        const data = await fetchAniList(query);
+        // Ensure data exists before mapping
+        const mediaList = data?.Page?.media || [];
+        renderAnimeGrid(mediaList);
+    } catch (err) {
+        console.error("Failed to fetch from AniList:", err);
     }
-
-    const trending = asArray(json?.data?.trending?.media);
-    const popular = asArray(json?.data?.popular?.media);
-
+}
     // Merge both lists while removing duplicate AniList IDs.
     const seen = new Set();
     const anime = [...trending, ...popular].filter(media => {
